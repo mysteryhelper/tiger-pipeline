@@ -196,10 +196,10 @@ def generate_script_openrouter(topic, facts):
     if not OPENROUTER_KEY:
         return None
     models = [
-        "mistralai/mistral-7b-instruct:free",
-        "meta-llama/llama-3.2-3b-instruct:free",
-        "google/gemma-3-4b-it:free"
-    ]
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "mistralai/mistral-7b-instruct:free",
+    "qwen/qwen-2-7b-instruct:free"
+]
     for model in models:
         try:
             print(f"Trying OpenRouter {model}...")
@@ -208,7 +208,8 @@ def generate_script_openrouter(topic, facts):
                 headers={
                     "Authorization": f"Bearer {OPENROUTER_KEY}",
                     "Content-Type": "application/json",
-                    "HTTP-Referer": "https://github.com/mysteryhelper/tiger-pipeline"
+                    "HTTP-Referer": "https://github.com",
+"X-Title": "TIGER Pipeline"
                 },
                 json={
                     "model": model,
