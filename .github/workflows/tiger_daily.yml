@@ -2,7 +2,7 @@ name: TIGER Daily Video
 
 on:
   schedule:
-    - cron: '30 0 * * *'   # 6:00 AM IST (00:30 UTC)
+    - cron: '30 0 * * *'
   workflow_dispatch:
 
 jobs:
@@ -22,13 +22,10 @@ jobs:
       run: |
         sudo apt update
         sudo apt install ffmpeg imagemagick fonts-dejavu -y
-        sudo sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' /etc/ImageMagick-6/policy.xml
-        sudo sed -i 's/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/' /etc/ImageMagick-6/policy.xml
-        sudo sed -i 's/<policy domain="coder" rights="none" pattern="MVG"/<policy domain="coder" rights="read|write" pattern="MVG"/' /etc/ImageMagick-6/policy.xml
         echo '<policymap><policy domain="coder" rights="read|write" pattern="*"/><policy domain="path" rights="read|write" pattern="@*"/></policymap>' | sudo tee /etc/ImageMagick-6/policy.xml
 
     - name: Install Python libs
-      run: pip install moviepy==1.0.3 edge-tts duckduckgo-search google-generativeai "pillow=9.5.0" requests google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client python-dotenv schedule pytrends
+      run: pip install moviepy==1.0.3 edge-tts duckduckgo-search google-generativeai pillow==9.5.0 requests google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client python-dotenv schedule pytrends numpy
 
     - name: Create .env
       run: |
