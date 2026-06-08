@@ -194,7 +194,7 @@ def generate_seo_metadata(script_text, topic, research_data):
         "DESCRIPTION: <description>\n"
         "TAGS: tag1, tag2, tag3..."
     )
-    models = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.0-pro"]
     if GEMINI_KEY:
         for model_name in models:
             try:
@@ -232,7 +232,7 @@ def parse_seo_output(seo_text):
 # ================== SCRIPT GENERATION (Gemini only) ==================
 def generate_script_gemini(topic, facts_text, research_data):
     research_str = f"Trending: {', '.join(research_data.get('trends', []))}\nCompetitors: {', '.join(research_data.get('competitor_titles', []))}"
-    models = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.0-pro"]
     for model_name in models:
         for attempt in range(2):
             try:
