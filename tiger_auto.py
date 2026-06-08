@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from moviepy.editor import *
-from moviepy.video.fx.all import resize, crop
 from PIL import Image, ImageDraw, ImageFont
 import edge_tts
 from duckduckgo_search import DDGS
@@ -15,31 +14,22 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
 import schedule
 
-# Market research
-try:
-    from pytrends.request import TrendReq
-    PYTENDS_AVAILABLE = True
-except:
-    PYTENDS_AVAILABLE = False
-
-# ================== 🎯 CHANNEL CONFIG ==================
 CHANNEL_NAME = "Future AI Toolkit"
-PRIVACY = "private" # test ke baad "public"
+PRIVACY = "private"
 RESOLUTION = (1920, 1080)
 FPS = 30
 INTRO_DURATION = 3
 OUTRO_DURATION = 8
-DISCLAIMER = "\n\n⚠️ Disclaimer: This video is for educational purposes only. Not financial advice.\n"
-# 👇 Linux paths (Ubuntu GitHub Actions)
+DISCLAIMER = "Disclaimer: This video is for educational purposes only. Not financial advice."
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 PROFILE_PIC = "assets/profile.png"
 
 PEXELS_KEY = os.getenv("PEXELS_API_KEY")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
 
@@ -49,10 +39,20 @@ CREDENTIALS_FILE = "client_secrets.json"
 TOKEN_FILE = "token.pickle"
 VIDEO_CATEGORY = "27"
 
+TOPICS = [
+    "Best Cash Back Credit Cards 2026 - Hidden Benefits Nobody Tells You",
+    "Top 5 ETFs for Passive Income 2026 - Build Wealth While You Sleep",
+    "Roth IRA Secrets 2026 - How to Retire Early Tax Free",
+    "Chase Sapphire vs Amex Platinum 2026 - Which Card Wins",
+    "How to Stack Credit Card Rewards Like a Pro in 2026",
+    "I Bonds vs Treasury Bills 2026 - Where to Put Your Money",
+    "Index Fund Investing for Beginners 2026 - Complete Guide",
+]
+
 # ================== ASSET GENERATION ==================
 def get_profile_clip(size=(120,120)):
     if os.path.exists(PROFILE_PIC):
-        img = Image.open(PROFILE_PIC).resize(size)
+        img = Image.open(PROFILE_PIC).convert("RGBA").resize(size, Image.LANCZOS)
         mask = Image.new("L", size, 0)
         draw_mask = ImageDraw.Draw(mask)
         draw_mask.ellipse((0, 0, size[0], size[1]), fill=255)
@@ -90,20 +90,10 @@ def create_thumbnail_base():
     draw = ImageDraw.Draw(img)
     font = ImageFont.truetype(FONT_BOLD, 50)
     draw.text((40, 40), CHANNEL_NAME, fill="gold", font=font, stroke_width=2, stroke_fill="black")
-    if os.path.exists(PROFILE_PIC):
-        avatar = Image.open(PROFILE_PIC).resize((80,80))
-        mask = Image.new("L", (80,80), 0)
-        draw_mask = ImageDraw.Draw(mask)
-        draw_mask.ellipse((0,0,80,80), fill=255)
-        avatar.putalpha(mask)
-        img.paste(avatar, (1100, 40), avatar)
     img.save("assets/thumbnail_base.png")
 
 def ensure_assets():
-    if not os.path.exists("assets"):
-        os.makedirs("assets")
-    if not os.path.exists("assets/fonts"):
-        os.makedirs("assets/fonts")
+    os.makedirs("assets", exist_ok=True)
     if not os.path.exists("assets/intro.mp4"):
         create_intro()
     if not os.path.exists("assets/outro.mp4"):
@@ -115,18 +105,19 @@ def ensure_assets():
 def create_thumbnail(title, hook_text="", output_path="thumbnail.jpg"):
     base = Image.open("assets/thumbnail_base.png")
     draw = ImageDraw.Draw(base)
-    font = ImageFont.truetype(FONT_BOLD, 60)
+    font_large = ImageFont.truetype(FONT_BOLD, 65)
+    font_small = ImageFont.truetype(FONT_BOLD, 45)
     if hook_text:
-        lines = textwrap.wrap(hook_text, width=20)
-        y = 150
-        for line in lines:
-            draw.text((60, y), line, fill="white", font=font, stroke_width=2, stroke_fill="black")
-            y += 70
-    title_lines = textwrap.wrap(title, width=30)
+        lines = textwrap.wrap(hook_text[:80], width=22)
+        y = 120
+        for line in lines[:3]:
+            draw.text((60, y), line, fill="white", font=font_large, stroke_width=2, stroke_fill="black")
+            y += 80
+    title_lines = textwrap.wrap(title[:100], width=28)
     y = 500
-    for line in title_lines:
-        draw.text((60, y), line, fill="yellow", font=font, stroke_width=2, stroke_fill="black")
-        y += 70
+    for line in title_lines[:2]:
+        draw.text((60, y), line, fill="yellow", font=font_small, stroke_width=2, stroke_fill="black")
+        y += 60
     base.save(output_path)
     return output_path
 
@@ -134,84 +125,220 @@ def create_thumbnail(title, hook_text="", output_path="thumbnail.jpg"):
 def web_search(query, max_results=8):
     try:
         with DDGS() as ddgs:
-            results = []
-            for r in ddgs.text(query, max_results=max_results):
-                results.append(r['body'])
+            results = [r['body'] for r in ddgs.text(query, max_results=max_results)]
             return "\n".join(results)
     except Exception as e:
-        print(f"Web search failed: {e}. Using offline facts.")
+        print(f"Web search failed: {e}")
         return f"Finance tips for {query}."
 
-# ================== MARKET RESEARCH ==================
-def get_trending_queries(keyword, timeframe='today 3-m'):
-    if not PYTENDS_AVAILABLE:
-        return []
-    for attempt in range(3):
+# ================== SCRIPT GENERATION ==================
+SCRIPT_PROMPT = '''You are a top US finance YouTuber creating a VIRAL video script.
+Topic: "{topic}"
+Research Facts: {facts}
+
+Write a detailed 800-1000 word script. Use EXACTLY this structure with these EXACT labels:
+
+HOOK: [Write a shocking stat or question that grabs attention in 2-3 sentences]
+
+POINT 1: [First major point - write 3-4 sentences explaining clearly]
+BROLL: [3 keywords for stock footage separated by commas]
+TEXT: [One bold text overlay - max 8 words]
+
+POINT 2: [Second major point - write 3-4 sentences]
+BROLL: [3 keywords for stock footage]
+TEXT: [One bold text overlay - max 8 words]
+
+POINT 3: [Third major point - write 3-4 sentences]
+BROLL: [3 keywords for stock footage]
+TEXT: [One bold text overlay - max 8 words]
+
+POINT 4: [Fourth major point - write 3-4 sentences]
+BROLL: [3 keywords for stock footage]
+TEXT: [One bold text overlay - max 8 words]
+
+POINT 5: [Fifth major point - write 3-4 sentences]
+BROLL: [3 keywords for stock footage]
+TEXT: [One bold text overlay - max 8 words]
+
+CONCLUSION: [Strong summary with CTA to subscribe - 3-4 sentences]
+
+Rules:
+- Total script must be 800-1000 words
+- Use simple conversational American English
+- Each point must have real actionable advice
+- Hook must mention a specific number or stat
+- End with "Disclaimer: This video is for educational purposes only. Not financial advice."
+'''
+
+def generate_script_gemini(topic, facts):
+    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest"]
+    for model_name in models:
+        for attempt in range(2):
+            try:
+                print(f"Trying Gemini {model_name}...")
+                model = genai.GenerativeModel(model_name)
+                prompt = SCRIPT_PROMPT.format(topic=topic, facts=facts[:2000])
+                response = model.generate_content(prompt)
+                print(f"✅ Gemini success: {model_name}")
+                return response.text
+            except Exception as e:
+                err = str(e)
+                if "429" in err or "ResourceExhausted" in err:
+                    wait = 30 * (attempt + 1)
+                    print(f"Gemini quota, waiting {wait}s...")
+                    time.sleep(wait)
+                else:
+                    print(f"Gemini error: {err[:80]}")
+                    break
+    return None
+
+def generate_script_openrouter(topic, facts):
+    if not OPENROUTER_KEY:
+        return None
+    models = [
+        "mistralai/mistral-7b-instruct:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
+        "google/gemma-3-4b-it:free"
+    ]
+    for model in models:
         try:
-            pytrend = TrendReq(hl='en-US', tz=360, timeout=(10,25))
-            pytrend.build_payload([keyword], cat=0, timeframe=timeframe, geo='US', gprop='youtube')
-            related = pytrend.related_queries()
-            rising = related[keyword]['rising'] if keyword in related and related[keyword]['rising'] is not None else []
-            return rising['query'].tolist() if not rising.empty else []
+            print(f"Trying OpenRouter {model}...")
+            resp = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/mysteryhelper/tiger-pipeline"
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": SCRIPT_PROMPT.format(topic=topic, facts=facts[:2000])}],
+                    "max_tokens": 2000
+                },
+                timeout=60
+            )
+            result = resp.json()
+            if 'choices' in result and result['choices']:
+                print(f"✅ OpenRouter success: {model}")
+                return result['choices'][0]['message']['content']
         except Exception as e:
-            if "429" in str(e):
-                wait = 60 * (attempt + 1)
-                print(f"Google Trends rate limited, waiting {wait}s...")
-                time.sleep(wait)
-            else:
-                print(f"Trends error: {e}")
-                return []
-    return []
+            print(f"OpenRouter {model} error: {e}")
+            continue
+    return None
 
-def competitor_titles(topic):
-    query = f'"{topic}" YouTube video title best guide 2026'
-    search_text = web_search(query, 5)
-    titles = re.findall(r'(?:"([^"]+)"|([A-Z][^.]*?(?:2026|credit card|ETF|invest)))', search_text)
-    titles = [t[0] if t[0] else t[1] for t in titles if any(t)]
-    return list(set([t.strip() for t in titles if len(t.strip()) > 20]))[:5]
+def generate_script(topic, research_data):
+    facts = web_search(f"latest {topic} tips guide USA 2026 finance")
+    
+    script = generate_script_gemini(topic, facts)
+    if script:
+        return script
+    
+    print("Gemini failed → trying OpenRouter...")
+    script = generate_script_openrouter(topic, facts)
+    if script:
+        return script
+    
+    print("⚠️ All AI failed → basic fallback")
+    points = [f.strip() for f in facts.split('\n') if len(f.strip()) > 60][:5]
+    s = f"HOOK: Did you know most Americans are missing out on thousands of dollars every year? Today we reveal the truth about {topic}.\n\n"
+    for i, p in enumerate(points, 1):
+        s += f"POINT {i}: {p[:250]}\nBROLL: finance, money, investing\nTEXT: Key Tip #{i}\n\n"
+    s += f"CONCLUSION: That covers everything you need to know about {topic}. Hit subscribe for daily finance tips that can change your life.\n\n{DISCLAIMER}"
+    return s
 
-def market_research(topic):
-    trends = get_trending_queries(topic.split()[0])
-    comp_titles = competitor_titles(topic)
-    return {"trends": trends, "competitor_titles": comp_titles}
+# ================== PARSE SCRIPT ==================
+def parse_script(script_text):
+    parts = []
+    lines = script_text.split('\n')
+    current_point = None
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        if re.match(r'^HOOK\s*:', line, re.I):
+            text = line.split(':', 1)[1].strip() if ':' in line else ''
+            if text:
+                parts.append({"type": "hook", "text": text})
+        
+        elif re.match(r'^POINT\s*\d+\s*:', line, re.I):
+            if current_point and current_point.get('text'):
+                parts.append(current_point)
+            text = line.split(':', 1)[1].strip() if ':' in line else ''
+            current_point = {"type": "point", "text": text, "broll": [], "text_overlay": ""}
+        
+        elif re.match(r'^BROLL\s*:', line, re.I) and current_point is not None:
+            kw = line.split(':', 1)[1].strip()
+            current_point['broll'] = [k.strip() for k in kw.split(',') if k.strip()]
+        
+        elif re.match(r'^TEXT\s*:', line, re.I) and current_point is not None:
+            current_point['text_overlay'] = line.split(':', 1)[1].strip()
+        
+        elif re.match(r'^CONCLUSION\s*:', line, re.I):
+            if current_point and current_point.get('text'):
+                parts.append(current_point)
+                current_point = None
+            text = line.split(':', 1)[1].strip() if ':' in line else ''
+            if text:
+                parts.append({"type": "conclusion", "text": text})
+        
+        else:
+            # Multi-line text append
+            if current_point is not None and line and not re.match(r'^(BROLL|TEXT|POINT|HOOK|CONCLUSION)\s*:', line, re.I):
+                current_point['text'] = current_point.get('text', '') + ' ' + line
+            elif parts and parts[-1]['type'] in ['hook', 'conclusion'] and line:
+                parts[-1]['text'] = parts[-1].get('text', '') + ' ' + line
+    
+    if current_point and current_point.get('text'):
+        parts.append(current_point)
+    
+    print(f"✅ Parsed {len(parts)} sections")
+    return parts
 
-# ================== SEO METADATA GENERATOR ==================
-def generate_seo_metadata(script_text, topic, research_data):
-    trend_list = research_data.get('trends', [])
-    comp_titles = research_data.get('competitor_titles', [])
-    research_str = f"Trending keywords: {', '.join(trend_list)}\nTop competitor titles: {', '.join(comp_titles)}"
-    prompt = (
-        "You are a YouTube SEO expert for a finance channel. Based on the script and market research, create a viral-optimized metadata package.\n\n"
-        f"Script (excerpt): {script_text[:1000]}\n"
-        f"Topic: {topic}\n"
-        f"Research: {research_str}\n\n"
-        "Rules:\n"
-        "1. Title: Must include a number, power word (e.g., 'Secret', 'Ultimate', 'Shocking'), and the current year (2026). Keep under 60 characters.\n"
-        "2. Description: Write a 2-3 sentence description using keywords naturally. Include CTA and disclaimer.\n"
-        "3. Tags: Provide 10-15 relevant tags, including long-tail keywords.\n\n"
-        "Output format:\n"
-        "TITLE: <title>\n"
-        "DESCRIPTION: <description>\n"
-        "TAGS: tag1, tag2, tag3..."
-    )
-    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.0-pro"]
+# ================== SEO METADATA ==================
+def generate_seo_metadata(narration, topic):
+    prompt = f"""YouTube SEO expert. Create viral metadata for finance video.
+Topic: {topic}
+Script excerpt: {narration[:500]}
+
+Output EXACTLY:
+TITLE: [title with number + power word + 2026, under 60 chars]
+DESCRIPTION: [2-3 sentences with keywords + CTA + disclaimer]
+TAGS: tag1, tag2, tag3, tag4, tag5, tag6, tag7, tag8, tag9, tag10"""
+
+    # Try Gemini
     if GEMINI_KEY:
-        for model_name in models:
+        for model_name in ["gemini-2.0-flash", "gemini-1.5-flash-latest"]:
             try:
                 model = genai.GenerativeModel(model_name)
-                resp = model.generate_content(prompt)
-                return resp.text
+                return model.generate_content(prompt).text
             except:
                 continue
-    return f"TITLE: {topic} (2026) – Top Tips & Secrets\nDESCRIPTION: Discover the latest insights on {topic}. Subscribe for more finance content.\nTAGS: {topic}, finance, 2026, money, tips"
+    
+    # Try OpenRouter
+    if OPENROUTER_KEY:
+        try:
+            resp = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENROUTER_KEY}", "Content-Type": "application/json"},
+                json={"model": "mistralai/mistral-7b-instruct:free", "messages": [{"role": "user", "content": prompt}], "max_tokens": 300},
+                timeout=30
+            )
+            result = resp.json()
+            if 'choices' in result:
+                return result['choices'][0]['message']['content']
+        except:
+            pass
+    
+    return f"TITLE: {topic[:55]} 2026\nDESCRIPTION: Discover the secrets of {topic}. Subscribe for more finance tips.\nTAGS: {topic}, finance, money, investing, 2026, credit cards, ETF, passive income, wealth, tips"
 
 def parse_seo_output(seo_text):
     title = desc = ""
     tags = []
-    lines = seo_text.split('\n')
-    mode = None
     desc_lines = []
-    for line in lines:
+    mode = None
+    for line in seo_text.split('\n'):
         if line.startswith("TITLE:"):
             title = line[6:].strip()
         elif line.startswith("DESCRIPTION:"):
@@ -222,144 +349,55 @@ def parse_seo_output(seo_text):
                 desc = " ".join(desc_lines)
                 mode = None
             tags = [t.strip() for t in line[5:].split(",")]
-        else:
-            if mode == "desc":
-                desc_lines.append(line.strip())
+        elif mode == "desc":
+            desc_lines.append(line.strip())
     if mode == "desc":
         desc = " ".join(desc_lines)
     return title, desc, tags
 
-# ================== SCRIPT GENERATION (Gemini only) ==================
-def generate_script_gemini(topic, facts_text, research_data):
-    research_str = f"Trending: {', '.join(research_data.get('trends', []))}\nCompetitors: {', '.join(research_data.get('competitor_titles', []))}"
-    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.0-pro"]
-    for model_name in models:
-        for attempt in range(2):
-            try:
-                print(f"Trying Gemini {model_name} (attempt {attempt+1})")
-                model = genai.GenerativeModel(model_name)
-                prompt = f"""You are a top US finance YouTuber. Write a script for: "{topic}".
-Market Research: {research_str[:500]}
-Facts: {facts_text[:1500]}
-
-Structure:
-HOOK: (shocking question/stat)
-POINT 1: (one clear idea)
-BROLL: (3 keywords for stock footage, comma separated)
-TEXT: (bold text overlay for this point)
-POINT 2: ...
-...
-CONCLUSION: (summary + CTA to subscribe)
-
-Rules:
-- Keep whole script under 600 words.
-- Use simple, engaging English.
-- Include "{DISCLAIMER}" at the end.
-- Mark each section clearly with the labels exactly as shown.
-"""
-                response = model.generate_content(prompt)
-                print(f"✅ Script by Gemini: {model_name}")
-                return response.text
-            except Exception as e:
-                err = str(e)
-                if "ResourceExhausted" in err or "429" in err:
-                    wait = 30 * (attempt + 1)
-                    print(f"Quota exhausted, waiting {wait}s...")
-                    time.sleep(wait)
-                else:
-                    print(f"Gemini error: {err[:100]}")
-                    break
-    return None
-
-def generate_fallback_script(topic, facts_text, research_data):
-    facts = facts_text.split('\n')
-    points = [f.strip() for f in facts if len(f.strip()) > 50][:5]
-    script = f"HOOK: Today we are talking about {topic}. Let's find out the key facts!\n"
-    for i, point in enumerate(points, 1):
-        script += f"POINT {i}: {point[:200]}\n"
-        script += f"BROLL: finance, money, charts\n"
-        script += f"TEXT: {point[:80]}\n"
-    script += f"CONCLUSION: That's all for {topic}. Subscribe for more finance updates.\n"
-    script += DISCLAIMER
-    print("⚠️ Using fallback script (no AI).")
-    return script
-
-def generate_script(topic, research_data):
-    facts = web_search(f"latest {topic} 2026 USA finance guide")
-    gemini_script = generate_script_gemini(topic, facts, research_data)
-    if gemini_script:
-        return gemini_script
-    return generate_fallback_script(topic, facts, research_data)
-
-# ================== PARSING ==================
-def parse_script(script_text):
-    parts = []
-    lines = script_text.split('\n')
-    current_point = None
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        if re.match(r'^HOOK\s*:', line, re.I):
-            text = re.split(r'\s*:\s*', line, maxsplit=1)[1]
-            parts.append({"type": "hook", "text": text.strip()})
-        elif re.match(r'^POINT\s*\d*', line, re.I):
-            if current_point:
-                parts.append(current_point)
-            if ':' in line:
-                text = re.split(r'\s*:\s*', line, maxsplit=1)[1]
-            else:
-                text = ''
-            current_point = {"type": "point", "text": text.strip(), "broll": [], "text_overlay": ""}
-        elif re.match(r'^BROLL\s*:', line, re.I) and current_point is not None:
-            keywords = re.split(r'\s*:\s*', line, maxsplit=1)[1]
-            current_point['broll'] = [k.strip() for k in keywords.split(',') if k.strip()]
-        elif re.match(r'^TEXT\s*:', line, re.I) and current_point is not None:
-            current_point['text_overlay'] = re.split(r'\s*:\s*', line, maxsplit=1)[1].strip()
-        elif re.match(r'^CONCLUSION\s*:', line, re.I):
-            if current_point:
-                parts.append(current_point)
-                current_point = None
-            text = re.split(r'\s*:\s*', line, maxsplit=1)[1]
-            parts.append({"type": "conclusion", "text": text.strip()})
-    if current_point:
-        parts.append(current_point)
-    return parts
-
-# ================== TTS (with fallback) ==================
+# ================== TTS ==================
 async def generate_tts(text, voice="en-US-ChristopherNeural", output="temp_audio.mp3"):
     try:
         communicate = edge_tts.Communicate(text, voice)
         await communicate.save(output)
+        print(f"✅ TTS generated: {output}")
         return output
     except Exception as e:
-        print(f"❌ edge-tts failed: {e}. Generating silent audio as fallback.")
+        print(f"❌ TTS failed: {e}")
         word_count = len(text.split())
-        duration = max(5, word_count / 150 * 60)
+        duration = max(30, word_count / 2.5)
         clip = AudioClip(lambda t: [0, 0], duration=duration, fps=44100)
         clip.write_audiofile(output, logger=None)
         return output
 
-# ================== STOCK FOOTAGE (Pexels) ==================
+# ================== STOCK FOOTAGE ==================
 def download_stock_clips_pexels(keywords, output_dir="temp_broll"):
     os.makedirs(output_dir, exist_ok=True)
+    if not PEXELS_KEY:
+        return []
     headers = {"Authorization": PEXELS_KEY}
     clips = []
     for kw in keywords:
-        resp = requests.get(f"https://api.pexels.com/videos/search?query={kw}&per_page=2&size=large", headers=headers)
-        if resp.status_code != 200:
-            continue
-        for video in resp.json().get('videos', []):
-            for file in video['video_files']:
-                if file['width'] >= 1920:
-                    url = file['link']
-                    fname = f"{output_dir}/{kw.replace(' ', '_')}.mp4"
-                    if not os.path.exists(fname):
-                        r = requests.get(url)
-                        with open(fname, 'wb') as f:
-                            f.write(r.content)
-                    clips.append(fname)
-                    break
+        try:
+            resp = requests.get(
+                f"https://api.pexels.com/videos/search?query={kw}&per_page=3&size=large",
+                headers=headers, timeout=15
+            )
+            if resp.status_code != 200:
+                continue
+            for video in resp.json().get('videos', []):
+                for file in video['video_files']:
+                    if file.get('width', 0) >= 1280:
+                        url = file['link']
+                        fname = f"{output_dir}/{kw.replace(' ', '_')}.mp4"
+                        if not os.path.exists(fname):
+                            r = requests.get(url, timeout=60)
+                            with open(fname, 'wb') as f:
+                                f.write(r.content)
+                        clips.append(fname)
+                        break
+        except Exception as e:
+            print(f"Pexels error for {kw}: {e}")
     return clips
 
 # ================== VIDEO ASSEMBLY ==================
@@ -368,16 +406,20 @@ def build_video(parsed_script, audio_path, broll_clips, output="final_video.mp4"
     outro = VideoFileClip("assets/outro.mp4").resize(RESOLUTION)
     voice = AudioFileClip(audio_path)
     total_audio_dur = voice.duration
+    print(f"Audio duration: {total_audio_dur:.1f}s")
+
     available_clips = []
     for path in broll_clips:
         try:
             clip = VideoFileClip(path).without_audio().resize(RESOLUTION)
             available_clips.append(clip)
-        except:
-            continue
+        except Exception as e:
+            print(f"Clip error {path}: {e}")
+
     if not available_clips:
-        bg = ColorClip(RESOLUTION, (0,0,0)).set_duration(total_audio_dur)
+        bg = ColorClip(RESOLUTION, (20, 20, 40)).set_duration(total_audio_dur)
         available_clips = [bg]
+
     loop_parts = []
     acc_dur = 0
     while acc_dur < total_audio_dur:
@@ -386,23 +428,32 @@ def build_video(parsed_script, audio_path, broll_clips, output="final_video.mp4"
             acc_dur += cl.duration
             if acc_dur >= total_audio_dur:
                 break
+
     long_broll = concatenate_videoclips(loop_parts).subclip(0, total_audio_dur).resize(RESOLUTION)
-    sections = []
-    for part in parsed_script:
-        if part['type'] in ['hook', 'point', 'conclusion']:
-            sections.append(part)
-    total_chars = sum(len(part['text']) for part in sections) or 1
+
+    sections = [p for p in parsed_script if p['type'] in ['hook', 'point', 'conclusion']]
+    total_chars = sum(len(p.get('text', '')) for p in sections) or 1
     time_pos = 0
     text_clips = []
+
     for part in sections:
-        part_duration = (len(part['text']) / total_chars) * total_audio_dur
-        if part.get('text_overlay') and part['text_overlay'].strip():
-            overlay = TextClip(part['text_overlay'], fontsize=55, font=FONT_BOLD,
-                               color='white', stroke_color='black', stroke_width=2,
-                               method='caption', size=(1700, None))
-            overlay = overlay.set_position(('center', 0.8), relative=True).set_start(time_pos).set_duration(part_duration).crossfadein(0.3)
-            text_clips.append(overlay)
+        part_duration = (len(part.get('text', '')) / total_chars) * total_audio_dur
+        overlay_text = part.get('text_overlay', '').strip()
+        if overlay_text:
+            try:
+                overlay = TextClip(
+                    overlay_text, fontsize=55, font=FONT_BOLD,
+                    color='white', stroke_color='black', stroke_width=2,
+                    method='caption', size=(1700, None)
+                )
+                overlay = overlay.set_position(('center', 0.82), relative=True)\
+                                 .set_start(time_pos).set_duration(part_duration)\
+                                 .crossfadein(0.3)
+                text_clips.append(overlay)
+            except Exception as e:
+                print(f"Text overlay error: {e}")
         time_pos += part_duration
+
     content_video = CompositeVideoClip([long_broll] + text_clips).set_duration(total_audio_dur)
     final = concatenate_videoclips([intro, content_video, outro])
     audio_content = CompositeAudioClip([voice.set_start(INTRO_DURATION)])
@@ -444,94 +495,87 @@ def upload_video(video_file, title, description, tags, thumbnail_file=None):
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
     response = request.execute()
     video_id = response['id']
-    if thumbnail_file:
+    print(f"✅ Uploaded: https://youtu.be/{video_id}")
+    if thumbnail_file and os.path.exists(thumbnail_file):
         youtube.thumbnails().set(videoId=video_id, media_body=MediaFileUpload(thumbnail_file)).execute()
-    print(f"Uploaded: https://youtu.be/{video_id}")
     return video_id
 
 # ================== MAIN PIPELINE ==================
 async def create_and_upload_video(topic):
-    print("🔍 Performing market research...")
-    research_data = market_research(topic)
-    print(f" Trends: {research_data['trends'][:3]}...")
-    print(f" Competitors: {research_data['competitor_titles'][:2]}...")
+    print(f"\n🐯 TIGER starting: {topic}\n")
 
-    print("Generating script...")
-    raw_script = generate_script(topic, research_data)
+    print("📝 Generating script...")
+    raw_script = generate_script(topic, {})
     parsed = parse_script(raw_script)
+    
     if not parsed:
-        print("❌ Parsing failed, using fallback.")
-        facts = web_search(f"latest {topic} 2026 USA finance guide")
-        raw_script = generate_fallback_script(topic, facts, research_data)
-        parsed = parse_script(raw_script)
+        print("❌ Parse failed!")
+        return
+
+    narration_parts = [p.get('text', '') for p in parsed if p['type'] in ['hook', 'point', 'conclusion']]
+    full_narration = ' '.join(narration_parts) + ' ' + DISCLAIMER
+    print(f"📊 Narration length: {len(full_narration.split())} words")
 
     print("🎯 Generating SEO metadata...")
-    full_narration = " ".join([p['text'] for p in parsed if p['type'] in ['hook','point','conclusion']]) + DISCLAIMER
-    seo_raw = generate_seo_metadata(full_narration, topic, research_data)
+    seo_raw = generate_seo_metadata(full_narration, topic)
     seo_title, seo_desc, seo_tags = parse_seo_output(seo_raw)
+    
     if not seo_title:
-        seo_title = f"{topic} - {datetime.date.today().strftime('%b %d, %Y')}"
+        seo_title = f"{topic[:55]} 2026"
     if not seo_desc:
-        seo_desc = f"{full_narration[:3000]}\n\n{DISCLAIMER}\n\n#finance #money #investing"
+        seo_desc = f"Learn everything about {topic}. {DISCLAIMER}"
     if not seo_tags:
-        seo_tags = [tag.strip() for tag in topic.split()] + ["finance", "credit cards", "investing", "2026"]
-    print(f" Title: {seo_title}")
+        seo_tags = ["finance", "money", "investing", "2026", "credit cards", "ETF", "wealth"]
+    
+    print(f"Title: {seo_title}")
 
-    print("Generating voiceover...")
-    audio_file = await generate_tts(full_narration, voice="en-US-ChristopherNeural")
+    print("🎙️ Generating voiceover...")
+    audio_file = await generate_tts(full_narration)
 
     broll_keywords = []
     for part in parsed:
         if part['type'] == 'point' and part.get('broll'):
             broll_keywords.extend(part['broll'])
     if not broll_keywords:
-        broll_keywords = ["finance", "money", "investing"]
-    broll_keywords = list(set(broll_keywords))[:5]
+        broll_keywords = ["money", "finance", "investing", "credit card", "stock market"]
+    broll_keywords = list(set(broll_keywords))[:6]
 
-    print("Downloading stock clips...")
+    print("🎬 Downloading stock clips...")
     clips = download_stock_clips_pexels(broll_keywords)
+    print(f" Got {len(clips)} clips")
 
-    print("Assembling video...")
+    print("🎞️ Assembling video...")
     video_path = "output_video.mp4"
     build_video(parsed, audio_file, clips, video_path)
 
     hook_line = next((p['text'] for p in parsed if p['type'] == 'hook'), "")
-    print("Creating thumbnail...")
-    thumb_path = create_thumbnail(seo_title, hook_line)
+    print("🖼️ Creating thumbnail...")
+    thumb_path = create_thumbnail(seo_title, hook_line[:80])
 
-    print("Uploading to YouTube...")
+    print("📤 Uploading to YouTube...")
     upload_video(video_path, seo_title, seo_desc, seo_tags, thumb_path)
 
-    # Cleanup
-    os.remove(audio_file)
+    if os.path.exists(audio_file):
+        os.remove(audio_file)
     if os.path.exists("temp_broll"):
         shutil.rmtree("temp_broll")
-    print("Done! Next video tomorrow.")
+    
+    print("✅ Done!")
 
 def run_daily_pipeline():
     ensure_assets()
-    topics = [
-        "Best Credit Cards Nobody Talks About 2026",
-        "Top ETFs for Passive Income 2026",
-        "Hidden Credit Card Benefits You Miss",
-        "I Bonds vs Treasury Bills - Updated 2026",
-        "Roth IRA Secrets for Maximum Growth",
-        "Chase Sapphire vs Amex Platinum - Real Comparison",
-        "How to Stack Credit Card Rewards Like a Pro",
-    ]
-    today_topic = topics[datetime.date.today().weekday() % len(topics)]
+    today_topic = TOPICS[datetime.date.today().weekday() % len(TOPICS)]
+    print(f"Today's topic: {today_topic}")
     asyncio.run(create_and_upload_video(today_topic))
 
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "--manual":
-        print("🐯 TIGER manual run – generating one video now...")
+        print("🐯 TIGER manual run...")
         run_daily_pipeline()
-        print("✅ Video created. Exiting.")
     else:
         schedule.every().day.at("06:00").do(run_daily_pipeline)
-        print("🐯 TIGER auto‑scheduler started. Will run daily at 06:00 AM.")
-        print(" To run a single video now, use: python tiger_auto.py --manual")
+        print("🐯 TIGER scheduler started. Runs daily at 6 AM.")
         while True:
             schedule.run_pending()
             time.sleep(60)
