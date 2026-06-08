@@ -1,0 +1,38 @@
+name: TIGER Daily Video
+
+on:
+  schedule:
+    - cron: '30 0 * * *'   # 6:00 AM IST (00:30 UTC)
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install system deps
+      run: |
+        sudo apt update
+        sudo apt install ffmpeg imagemagick fonts-dejavu -y
+
+    - name: Install Python libs
+      run: pip install moviepy==1.0.3 edge-tts duckduckgo-search google-generativeai pillow requests google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client python-dotenv schedule pytrends
+
+    - name: Create .env
+      run: |
+        echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+        echo "PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}" >> .env
+
+    - name: Decode token.pickle
+      run: echo "${{ secrets.TOKEN_BASE64 }}" | base64 -d > token.pickle
+
+    - name: Run TIGER
+      run: python tiger_auto.py --manual
