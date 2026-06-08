@@ -28,7 +28,7 @@ jobs:
         echo '<policymap><policy domain="coder" rights="read|write" pattern="*"/><policy domain="path" rights="read|write" pattern="@*"/></policymap>' | sudo tee /etc/ImageMagick-6/policy.xml
 
     - name: Install Python libs
-      run: pip install moviepy==1.0.3 edge-tts duckduckgo-search google-generativeai pillow=9.5.0 requests google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client python-dotenv schedule pytrends
+      run: pip install moviepy==1.0.3 edge-tts duckduckgo-search google-generativeai "pillow=9.5.0" requests google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client python-dotenv schedule pytrends
 
     - name: Create .env
       run: |
