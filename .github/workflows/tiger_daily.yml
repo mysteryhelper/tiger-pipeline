@@ -31,6 +31,7 @@ jobs:
       run: |
         echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
         echo "PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}" >> .env
+        echo "OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}" >> .env
 
     - name: Decode token.pickle
       run: echo "${{ secrets.TOKEN_BASE64 }}" | base64 -d > token.pickle
